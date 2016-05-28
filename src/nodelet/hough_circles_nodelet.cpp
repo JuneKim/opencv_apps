@@ -125,16 +125,23 @@ class HoughCirclesNodelet : public opencv_apps::Nodelet
       // Do the work
       std::vector<cv::Rect> faces;
       cv::Mat src_gray, edges;
+	cv::Mat lower_red_hue_range;
+	cv::Mat upper_red_hue_range;
 
-      if ( frame.channels() > 1 ) {
-        cv::cvtColor( frame, src_gray, cv::COLOR_BGR2GRAY );
-      } else {
-        src_gray = frame;
-      }
+	cv::Mat red_hue_image;
+	
+        cv::cvtColor( frame, src_gray, cv::COLOR_BGR2HSV );
 
-      // Reduce the noise so we avoid false circle detection
-      cv::GaussianBlur( src_gray, src_gray, cv::Size(9, 9), 2, 2 );
+	// Threshold the HSV image, keep only the red pixels // 0 - 10
+	cv::inRange(src_gray, cv::Scalar(0, 100, 100), cv::Scalar(10, 255, 255), lower_red_hue_range);
+	cv::inRange(src_gray, cv::Scalar(120, 100, 100), cv::Scalar(150, 255, 255), upper_red_hue_range);
+//160-179
+	// Combine the above two images
+	cv::addWeighted(lower_red_hue_range, 1.0, upper_red_hue_range, 1.0, 0.0, red_hue_image);
 
+	cv::GaussianBlur(red_hue_image, red_hue_image, cv::Size(9, 9), 2, 2);
+
+#if 0
       // create the main window, and attach the trackbars
       if( debug_view_) {
         cv::namedWindow( window_name_, cv::WINDOW_AUTOSIZE );
@@ -144,7 +151,7 @@ class HoughCirclesNodelet : public opencv_apps::Nodelet
 
         if (need_config_update_) {
           config_.canny_threshold = canny_threshold_;
-          config_.accumulator_threshold = accumulator_threshold_;
+          configrc_gray.accumulator_threshold = accumulator_threshold_;
           srv.updateConfig(config_);
           need_config_update_ = false;
         }
@@ -154,12 +161,12 @@ class HoughCirclesNodelet : public opencv_apps::Nodelet
       // so we must check here
       canny_threshold_ = std::max(canny_threshold_, 1);
       accumulator_threshold_ = std::max(accumulator_threshold_, 1);
-
+#endif
       //runs the detection, and update the display
       // will hold the results of the detection
       std::vector<cv::Vec3f> circles;
       // runs the actual detection
-      cv::HoughCircles( src_gray, circles, CV_HOUGH_GRADIENT, 1, src_gray.rows/8, canny_threshold_, accumulator_threshold_, 0, 0 );
+      cv::HoughCircles(red_hue_image, circles, CV_HOUGH_GRADIENT, 1, red_hue_image.rows/8, 100, 20, 0, 0);
 
 
       // clone the colour, input image for displaying purposes
@@ -170,7 +177,7 @@ class HoughCirclesNodelet : public opencv_apps::Nodelet
         // circle center
         circle( frame, center, 3, cv::Scalar(0,255,0), -1, 8, 0 );
         // circle outline
-        circle( frame, center, radius, cv::Scalar(0,0,255), 3, 8, 0 );
+        circle( frame, center, radius, cv::Scalar(255,255,0), 5 );
 
         opencv_apps::Circle circle_msg;
         circle_msg.center.x = center.x;
@@ -200,6 +207,7 @@ class HoughCirclesNodelet : public opencv_apps::Nodelet
 
   void subscribe()
   {
+	cv::Mat hsv_imsge;
     NODELET_DEBUG("Subscribing to image topic.");
     if (config_.use_camera_info)
       cam_sub_ = it_->subscribeCamera("image", 3, &HoughCirclesNodelet::imageCallbackWithInfo, this);
